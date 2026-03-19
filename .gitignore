@@ -1,15 +1,25 @@
-# Remix compiler artifacts
-**/artifacts/
-**/artifacts/**
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
 
-# Remix plugin state folders
-deps/
-states/
+# Testing
+/coverage
 
-# Debug info
-*.dbg.json
-*.tsbuildinfo
+# Production
+/dist
 
-# Optional
+# Misc
+.DS_Store
 .env
 .env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
