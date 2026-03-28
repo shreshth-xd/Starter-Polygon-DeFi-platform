@@ -1,5 +1,8 @@
 // server.js  — CredAura Backend Entry Point
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+require("dotenv").config({ path: path.join(__dirname, ".env") });
+
 const express       = require("express");
 const cors          = require("cors");
 const helmet        = require("helmet");
@@ -16,9 +19,6 @@ const lenderRoutes   = require("./src/Routes/lender");
 const borrowerRoutes = require("./src/Routes/borrower");
 const loanRoutes     = require("./src/Routes/loan");
 const creditRoutes   = require("./src/Routes/credit");
-
-// Connect Database
-connectDB();
 
 const app = express();
 
@@ -77,16 +77,25 @@ app.use((req, res) => {
 // ── Global Error Handler ──────────────────────────────────────────────────────
 app.use(errorHandler);
 
-// ── Start Cron Jobs ───────────────────────────────────────────────────────────
-cronService.startAll();
-
-// ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`\n🚀 CredAura Backend running on port ${PORT}`);
-  console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
-  console.log(`🔗 Polygon RPC: ${process.env.POLYGON_RPC_URL}`);
-  console.log(`📦 Contract:   ${process.env.CONTRACT_ADDRESS}\n`);
+
+async function start() {
+  await connectDB();
+
+  cronService.startAll();
+
+  app.listen(PORT, () => {
+    console.log(`\n🚀 CredAura Backend running on port ${PORT}`);
+    console.log(`🌐 Environment: ${process.env.NODE_ENV}`);
+    console.log(`🍃 MongoDB:     connected`);
+    console.log(`🔗 Polygon RPC: ${process.env.POLYGON_RPC_URL || "(not set)"}`);
+    console.log(`📦 Contract:   ${process.env.CONTRACT_ADDRESS || "(not set)"}\n`);
+  });
+}
+
+start().catch((err) => {
+  console.error("❌ Failed to start server:", err.message);
+  process.exit(1);
 });
 
 module.exports = app;

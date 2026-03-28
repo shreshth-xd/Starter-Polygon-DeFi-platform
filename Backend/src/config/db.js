@@ -2,25 +2,31 @@
 const mongoose = require("mongoose");
 
 const connectDB = async () => {
+  const uri = process.env.MONGODB_URI && process.env.MONGODB_URI.trim();
+  if (!uri) {
+    console.error(
+      "❌ MONGODB_URI is missing. Add it to Backend/.env or the project root .env, e.g.\n" +
+        "   MONGODB_URI=mongodb://127.0.0.1:27017/credaura\n" +
+        "   or your Atlas connection string."
+    );
+    process.exit(1);
+  }
+
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI, {
-      // Mongoose 8 has sensible defaults; these options are kept for clarity
-    });
+    const conn = await mongoose.connect(uri);
 
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    console.log(`✅ MongoDB connected: ${conn.connection.host} → ${conn.connection.name}`);
 
-    // Handle connection events
     mongoose.connection.on("error", (err) => {
       console.error("❌ MongoDB connection error:", err);
     });
 
     mongoose.connection.on("disconnected", () => {
-      console.warn("⚠️  MongoDB disconnected. Attempting reconnect...");
+      console.warn("⚠️  MongoDB disconnected.");
     });
-
   } catch (error) {
     console.error("❌ MongoDB connection failed:", error.message);
-    process.exit(1); // Exit process with failure
+    process.exit(1);
   }
 };
 
