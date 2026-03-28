@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from "react-router-dom";
 
 import heroImg from '../../assets/hero section image.png'; 
 
@@ -26,13 +27,13 @@ const Hero = () => {
 
           {/* Buttons */}
           <div className="flex flex-wrap gap-4">
-           <button className="bg-amber-500 text-black px-6 py-3 rounded-full hover:scale-105 hover:bg-amber-600 transition-all cursor-pointer">
+           <Link to = "/signup"className="bg-amber-500 text-black px-6 py-3 rounded-full hover:scale-105 hover:bg-amber-600 transition-all cursor-pointer">
               Lend & Earn 9%
-            </button>
+            </Link>
 
-            <button className="bg-green-500 text-black px-6 py-3 rounded-full hover:scale-105 hover:bg-green-600 transition-all ease-in-out cursor-pointer ">
+            <Link to = "/signup" className="bg-green-500 text-black px-6 py-3 rounded-full hover:scale-105 hover:bg-green-600 transition-all ease-in-out cursor-pointer ">
               Borrow Against Crypto
-            </button>
+            </Link>
           </div>
 
           {/* Stats */}

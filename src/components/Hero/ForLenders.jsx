@@ -1,4 +1,6 @@
 import React from "react";
+import { Link } from "react-router-dom";
+
 
 const features = [
   {
@@ -157,10 +159,10 @@ const ForLenders = () => {
 
           {/* CTA */}
           <div className="text-center">
-            <button className="bg-amber-500 text-black px-6 py-3 cursor-pointer rounded-full 
+            <Link to="/signup" className="bg-amber-500 text-black px-6 py-3 cursor-pointer rounded-full 
                                hover:scale-105 hover:bg-amber-600 transition-all">
               Create Lender Account
-            </button>
+            </Link>
 
             <p className="text-gray-400 text-s mt-2">
               Minimum deposit ₹1,000 · Free to join

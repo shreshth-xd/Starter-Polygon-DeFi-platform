@@ -1,4 +1,6 @@
 import React from "react";
+import { Link } from "react-router-dom";
+
 
 const timeline = [
   {
@@ -136,10 +138,10 @@ const ForBorrowers = () => {
 
           {/* CTA */}
           <div className="mt-6 text-center">
-            <button className="bg-green-600 text-black font-serif px-6 py-3 cursor-pointer rounded-full 
+            <Link to="/signup" className="bg-green-600 text-black font-serif px-6 py-3 cursor-pointer rounded-full 
                                hover:scale-105 hover:bg-green-500 transition-all ">
               Apply for a Loan — ₹2K to ₹20K
-            </button>
+            </Link>
 
             <p className="text-gray-400 text-s mt-2">
               Loan range ₹2,000 – ₹20,000 · Flexible tenure
