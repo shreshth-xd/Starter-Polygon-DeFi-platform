@@ -1,18 +1,27 @@
 // src/services/blockchainService.js — ethers.js / Polygon interactions (with dev fallbacks)
 const { ethers } = require("ethers");
-const { getContract, getReadContract, getReadProvider } = require("../config/blockchain");
+const {
+  getContract,
+  getReadContract,
+  getReadProvider,
+  loadAbi,
+} = require("../config/blockchain");
 
 const MOCK_TX =
   "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 /**
- * Verify a collateral lock tx on-chain. Without RPC, dev mode can mock-verify.
+ * Verify lockCollateral tx: success receipt, correct contract, borrower, loanId, minimum value.
  */
-const verifyCollateralLock = async (txHash) => {
+const verifyCollateralLock = async (txHash, { borrowerWallet, loanId, expectedWei } = {}) => {
   const provider = getReadProvider();
-  if (!provider) {
+  const contractAddr = process.env.CONTRACT_ADDRESS;
+
+  if (!provider || !contractAddr) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("[blockchain] No POLYGON_RPC_URL — mock collateral verification");
+      console.warn(
+        "[blockchain] Missing POLYGON_RPC_URL or CONTRACT_ADDRESS — mock collateral verification"
+      );
       return {
         success: true,
         txHash,
@@ -20,12 +29,59 @@ const verifyCollateralLock = async (txHash) => {
         mock: true,
       };
     }
-    throw new Error("Blockchain provider not configured (set POLYGON_RPC_URL)");
+    throw new Error(
+      "Blockchain not configured (set POLYGON_RPC_URL and CONTRACT_ADDRESS)"
+    );
   }
 
   const receipt = await provider.getTransactionReceipt(txHash);
   if (!receipt) throw new Error("Transaction not found on chain");
   if (receipt.status !== 1) throw new Error("Transaction failed on chain");
+
+  const tx = await provider.getTransaction(txHash);
+  if (!tx) throw new Error("Transaction could not be loaded");
+
+  const expectedTo = ethers.getAddress(contractAddr);
+  if (!tx.to) throw new Error("Not a contract call transaction");
+  const txTo = ethers.getAddress(tx.to);
+  if (txTo.toLowerCase() !== expectedTo.toLowerCase()) {
+    throw new Error("Transaction did not interact with the CredAura contract");
+  }
+
+  if (borrowerWallet) {
+    const from = ethers.getAddress(tx.from);
+    if (from.toLowerCase() !== ethers.getAddress(borrowerWallet).toLowerCase()) {
+      throw new Error("Transaction sender does not match borrower wallet");
+    }
+  }
+
+  const abi = loadAbi();
+  if (!abi.length) throw new Error("CredAura ABI not loaded");
+  const iface = new ethers.Interface(abi);
+  let parsed;
+  try {
+    parsed = iface.parseTransaction({ data: tx.data, value: tx.value });
+  } catch {
+    throw new Error("Could not decode transaction as CredAura call");
+  }
+  if (!parsed || parsed.name !== "lockCollateral") {
+    throw new Error("Expected lockCollateral function call");
+  }
+
+  const onChainLoanId = parsed.args[0];
+  if (loanId != null && onChainLoanId !== loanId) {
+    throw new Error("loanId in transaction does not match your application");
+  }
+
+  if (expectedWei != null && expectedWei !== "") {
+    const exp = BigInt(expectedWei);
+    const val = BigInt(tx.value.toString());
+    if (val < exp) {
+      throw new Error(
+        `Locked amount ${val.toString()} wei is below required ${exp.toString()} wei`
+      );
+    }
+  }
 
   return {
     success: true,
@@ -35,7 +91,10 @@ const verifyCollateralLock = async (txHash) => {
   };
 };
 
-const releaseCollateral = async (borrowerWallet, contractLoanId, cryptoAmount) => {
+/**
+ * @param {string} amountWei — decimal string integer wei (preferred) or human amount for legacy
+ */
+const releaseCollateral = async (borrowerWallet, contractLoanId, amountWei) => {
   const contract = getContract();
   if (!contract) {
     console.warn("[blockchain] Contract not configured — mock collateral release");
@@ -46,7 +105,14 @@ const releaseCollateral = async (borrowerWallet, contractLoanId, cryptoAmount) =
     };
   }
 
-  const amount = ethers.parseEther(String(cryptoAmount));
+  let amount;
+  if (typeof amountWei === "bigint") {
+    amount = amountWei;
+  } else {
+    const s = String(amountWei);
+    amount = /^\d+$/.test(s) ? BigInt(s) : ethers.parseEther(s);
+  }
+
   const tx = await contract.releaseCollateral(borrowerWallet, contractLoanId, amount);
   const receipt = await tx.wait();
   return {

@@ -3,16 +3,44 @@ pragma solidity ^0.8.20;
 
 /**
  * @title CredAura
- * @notice MVP collateral vault aligned with backend `borrowerController` / ABI.
- *         Add Ownable / roles before mainnet — anyone can call release/liquidate here.
+ * @notice Collateral vault: borrowers lock native gas token (MATIC on Polygon); only the
+ *         deployer / owner may release or liquidate. Sync loanId string with backend draft.
  */
 contract CredAura {
+    address public owner;
+
     mapping(address => uint256) private _lockedWei;
     mapping(address => uint256) private _creditScore;
 
     event CollateralLocked(address indexed borrower, uint256 amount, string loanId);
-    event CollateralReleased(address indexed borrower, string loanId);
+    event CollateralReleased(address indexed borrower, string loanId, uint256 amount);
     event CollateralLiquidated(address indexed borrower, string loanId);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event CreditScoreUpdated(address indexed wallet, uint256 score);
+
+    error Unauthorized();
+    error InvalidOwner();
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert Unauthorized();
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        if (newOwner == address(0)) revert InvalidOwner();
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
+
+    /// @notice Backend may mirror off-chain scores for on-chain reads (owner only).
+    function setCreditScore(address wallet, uint256 score) external onlyOwner {
+        _creditScore[wallet] = score;
+        emit CreditScoreUpdated(wallet, score);
+    }
 
     /// @notice Lock native MATIC/ETH as collateral for a loan id (msg.value).
     function lockCollateral(string calldata loanId) external payable {
@@ -20,21 +48,21 @@ contract CredAura {
         emit CollateralLocked(msg.sender, msg.value, loanId);
     }
 
-    /// @notice Release wei back to borrower (backend signer should be gated in production).
+    /// @notice Release wei back to borrower (only protocol owner / backend signer).
     function releaseCollateral(
         address borrower,
         string calldata loanId,
         uint256 amount
-    ) external {
+    ) external onlyOwner {
         require(_lockedWei[borrower] >= amount, "Insufficient collateral");
         _lockedWei[borrower] -= amount;
         (bool ok, ) = payable(borrower).call{value: amount}("");
         require(ok, "ETH transfer failed");
-        emit CollateralReleased(borrower, loanId);
+        emit CollateralReleased(borrower, loanId, amount);
     }
 
-    /// @notice Clear locked balance on liquidation (funds routing TBD for production).
-    function liquidate(address borrower, string calldata loanId) external {
+    /// @notice Clear locked balance on liquidation.
+    function liquidate(address borrower, string calldata loanId) external onlyOwner {
         _lockedWei[borrower] = 0;
         emit CollateralLiquidated(borrower, loanId);
     }

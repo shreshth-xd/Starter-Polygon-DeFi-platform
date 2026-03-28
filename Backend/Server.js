@@ -31,7 +31,7 @@ app.use(cors({
     ? process.env.CLIENT_URL.split(",").map((s) => s.trim())
     : defaultOrigins,
   credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
@@ -59,6 +59,19 @@ app.get("/health", (req, res) => {
     message: "CredAura API is running",
     environment: process.env.NODE_ENV,
     timestamp: new Date().toISOString(),
+  });
+});
+
+// Public client config (contract address for MetaMask calls)
+app.get("/api/config", (req, res) => {
+  res.json({
+    success: true,
+    message: "Public configuration",
+    data: {
+      contractAddress: process.env.CONTRACT_ADDRESS || null,
+      chainId: process.env.CHAIN_ID ? Number(process.env.CHAIN_ID) : null,
+      rpcConfigured: Boolean(process.env.POLYGON_RPC_URL),
+    },
   });
 });
 

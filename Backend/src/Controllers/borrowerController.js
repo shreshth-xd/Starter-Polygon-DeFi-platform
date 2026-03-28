@@ -1,4 +1,5 @@
 // src/controllers/borrowerController.js — Borrower Operations
+const { ethers }      = require("ethers");
 const mongoose          = require("mongoose");
 const Borrower         = require("../Models/Borrower");
 const Loan             = require("../Models/Loan");
@@ -17,6 +18,19 @@ async function findLoanForBorrower(rawId, borrowerId) {
   return Loan.findOne({ ...base, loanId: rawId });
 }
 
+function buildRepaymentSchedule(tenureMonths, monthlyEMI) {
+  const schedule = [];
+  for (let i = 1; i <= tenureMonths; i++) {
+    schedule.push({
+      emiNumber: i,
+      amountINR: monthlyEMI,
+      status: "pending",
+      paidAt: null,
+    });
+  }
+  return schedule;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/borrower/dashboard
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,6 +45,7 @@ exports.getDashboard = async (req, res, next) => {
     ]);
 
     const activeLoan = loans.find((l) => l.status === LOAN_STATUS.ACTIVE);
+    const draftLoan = loans.find((l) => l.status === LOAN_STATUS.AWAITING_COLLATERAL);
     const score      = user.borrowerProfile.creditScore;
     const tier       = creditService.getScoreTier(score);
     const maxLoan    = creditService.getMaxLoanAmount(score);
@@ -38,6 +53,7 @@ exports.getDashboard = async (req, res, next) => {
     return sendOK(res, "Dashboard loaded.", {
       creditScore: { score, tier: tier.risk, maxLoan },
       activeLoan:  activeLoan || null,
+      draftLoan:   draftLoan || null,
       loanHistory: loans,
       recentTransactions: transactions,
       stats: {
@@ -91,102 +107,143 @@ exports.calculateLoan = async (req, res, next) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/borrower/apply-loan
-// Body: { amountINR, tenureMonths, cryptoType, collateralTxHash }
-// (Borrower has already locked collateral from MetaMask and sends txHash)
+// POST /api/borrower/loan-draft
+// Body: { amountINR, tenureMonths, cryptoType }
 // ─────────────────────────────────────────────────────────────────────────────
-exports.applyLoan = async (req, res, next) => {
+exports.createLoanDraft = async (req, res, next) => {
   try {
-    const { amountINR, tenureMonths, cryptoType, collateralTxHash } = req.body;
+    const { amountINR, tenureMonths, cryptoType } = req.body;
     const userId = req.user._id;
-    const user   = await Borrower.findById(userId);
+    const user = await Borrower.findById(userId);
 
-    // KYC check
     if (!user.kyc.isVerified) {
       return sendError(res, 403, "Please complete KYC verification before applying for a loan.");
     }
-
-    // Wallet check
     if (!user.borrowerProfile.walletAddress) {
       return sendError(res, 403, "Please connect your MetaMask wallet first.");
     }
 
-    // Eligibility check
     const eligibility = await creditService.checkEligibility(userId, amountINR);
     if (!eligibility.eligible) {
       return sendError(res, 403, eligibility.reason);
     }
 
-    // Verify collateral lock on Polygon
-    const txVerification = await blockchainService.verifyCollateralLock(collateralTxHash);
-    if (!txVerification.success) {
-      return sendError(res, 400, "Collateral transaction could not be verified on Polygon.");
-    }
-
-    // Calculate terms
     const cryptoPrice = await blockchainService.getCryptoPriceINR(cryptoType);
-    const terms       = creditService.calculateLoanTerms(amountINR, tenureMonths, cryptoPrice);
+    const terms = creditService.calculateLoanTerms(amountINR, tenureMonths, cryptoPrice);
+    const schedule = buildRepaymentSchedule(tenureMonths, terms.monthlyEMI);
 
-    // Build repayment schedule
-    const schedule = [];
-    const startDate = new Date();
-    for (let i = 1; i <= tenureMonths; i++) {
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + i);
-      schedule.push({
-        emiNumber:  i,
-        amountINR:  terms.monthlyEMI,
-        status:     "pending",
-        paidAt:     null,
-      });
-    }
-
-    const dueDate = new Date();
-    dueDate.setMonth(dueDate.getMonth() + tenureMonths);
+    const collateralWei = ethers
+      .parseEther(Number(terms.collateralCrypto).toFixed(18))
+      .toString();
 
     const loan = await Loan.create({
-      borrower:       userId,
+      borrower: userId,
       amountINR,
       tenureMonths,
-      interestRate:   terms.interestRate,
-      totalInterest:  terms.totalInterest,
+      interestRate: terms.interestRate,
+      totalInterest: terms.totalInterest,
       totalRepayment: terms.totalRepayment,
-      monthlyEMI:     terms.monthlyEMI,
+      monthlyEMI: terms.monthlyEMI,
       collateral: {
         cryptoType,
-        cryptoAmount:   terms.collateralCrypto,
+        cryptoAmount: terms.collateralCrypto,
         inrValueAtLock: terms.collateralINR,
-        contractTxHash: collateralTxHash,
+        contractTxHash: null,
       },
-      status:             LOAN_STATUS.ACTIVE,
-      startDate:          new Date(),
-      dueDate,
+      status: LOAN_STATUS.AWAITING_COLLATERAL,
+      startDate: null,
+      dueDate: null,
       disbursement: {
-        method:      "NEFT",
-        bankAccount: user.borrowerProfile.bankAccountNumber,
-        disbursedAt: new Date(),
-        referenceId: `DISB-${Date.now()}`,
+        method: null,
+        bankAccount: null,
+        disbursedAt: null,
+        referenceId: null,
       },
       repaymentSchedule: schedule,
-      blockchainData: { collateralLockTx: collateralTxHash },
+      blockchainData: { expectedCollateralWei: collateralWei },
     });
 
-    // Update borrower stats
+    return sendCreated(res, "Loan application created. Lock collateral in MetaMask next.", {
+      loan,
+      lockInstructions: {
+        loanId: loan.loanId,
+        collateralWei,
+        collateralHuman: String(terms.collateralCrypto),
+        cryptoType,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/borrower/confirm-loan
+// Body: { loanId, collateralTxHash }
+// ─────────────────────────────────────────────────────────────────────────────
+exports.confirmLoan = async (req, res, next) => {
+  try {
+    const { loanId, collateralTxHash } = req.body;
+    const userId = req.user._id;
+    const user = await Borrower.findById(userId);
+
+    const loan = await Loan.findOne({
+      borrower: userId,
+      loanId: String(loanId).trim(),
+      status: LOAN_STATUS.AWAITING_COLLATERAL,
+    });
+    if (!loan) {
+      return sendError(res, 404, "No pending application found for this loan id.");
+    }
+
+    try {
+      await blockchainService.verifyCollateralLock(collateralTxHash, {
+        borrowerWallet: user.borrowerProfile.walletAddress,
+        loanId: loan.loanId,
+        expectedWei: loan.blockchainData?.expectedCollateralWei,
+      });
+    } catch (e) {
+      return sendError(res, 400, e.message || "Collateral verification failed.");
+    }
+
+    const startDate = new Date();
+    const dueDate = new Date(startDate);
+    dueDate.setMonth(dueDate.getMonth() + loan.tenureMonths);
+
+    loan.status = LOAN_STATUS.ACTIVE;
+    loan.startDate = startDate;
+    loan.dueDate = dueDate;
+    loan.collateral.contractTxHash = collateralTxHash;
+    const priorBd =
+      loan.blockchainData?.toObject?.() || loan.blockchainData || {};
+    loan.blockchainData = {
+      ...priorBd,
+      collateralLockTx: collateralTxHash,
+    };
+    loan.markModified("blockchainData");
+    loan.disbursement = {
+      method: "NEFT",
+      bankAccount: user.borrowerProfile.bankAccountNumber,
+      disbursedAt: new Date(),
+      referenceId: `DISB-${Date.now()}`,
+    };
+
+    await loan.save();
+
     await Borrower.findByIdAndUpdate(userId, {
       $inc: {
-        "borrowerProfile.totalBorrowed": amountINR,
-        "borrowerProfile.activeLoans":   1,
+        "borrowerProfile.totalBorrowed": loan.amountINR,
+        "borrowerProfile.activeLoans": 1,
       },
     });
 
-    // Log transactions
     await Transaction.create([
       {
         user: userId,
         userKind: "Borrower",
         type: "collateral_lock",
-        cryptoAmount: terms.collateralCrypto,
-        cryptoType,
+        cryptoAmount: loan.collateral.cryptoAmount,
+        cryptoType: loan.collateral.cryptoType,
         loanId: loan._id,
         txHash: collateralTxHash,
         description: `Collateral locked for loan ${loan.loanId}`,
@@ -195,7 +252,7 @@ exports.applyLoan = async (req, res, next) => {
         user: userId,
         userKind: "Borrower",
         type: "loan_disbursed",
-        amountINR,
+        amountINR: loan.amountINR,
         loanId: loan._id,
         description: `Loan ${loan.loanId} disbursed to bank account`,
       },
@@ -204,11 +261,28 @@ exports.applyLoan = async (req, res, next) => {
     return sendCreated(res, "Loan approved! INR will be disbursed to your bank in 2–4 hours.", {
       loan,
       disbursementDetails: {
-        amountINR,
+        amountINR: loan.amountINR,
         bankAccount: user.borrowerProfile.bankAccountNumber,
-        expectedBy:  "2–4 banking hours",
+        expectedBy: "2–4 banking hours",
       },
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/borrower/loan-draft/:loanId
+// ─────────────────────────────────────────────────────────────────────────────
+exports.cancelLoanDraft = async (req, res, next) => {
+  try {
+    const loan = await findLoanForBorrower(req.params.loanId, req.user._id);
+    if (!loan) return sendError(res, 404, "Loan not found.");
+    if (loan.status !== LOAN_STATUS.AWAITING_COLLATERAL) {
+      return sendError(res, 400, "Only draft applications can be cancelled.");
+    }
+    await Loan.deleteOne({ _id: loan._id });
+    return sendOK(res, "Draft cancelled.", {});
   } catch (err) {
     next(err);
   }
@@ -266,10 +340,14 @@ exports.repayLoan = async (req, res, next) => {
     if (allPaid) {
       // Release collateral via smart contract
       const user = await Borrower.findById(req.user._id);
+      const releaseWei =
+        loan.blockchainData?.expectedCollateralWei ||
+        ethers.parseEther(Number(loan.collateral.cryptoAmount).toFixed(18)).toString();
+
       const releaseResult = await blockchainService.releaseCollateral(
         user.borrowerProfile.walletAddress,
         loan.loanId,
-        loan.collateral.cryptoAmount.toString()
+        releaseWei
       );
 
       loan.status    = LOAN_STATUS.REPAID;

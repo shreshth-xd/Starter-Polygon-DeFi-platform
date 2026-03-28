@@ -8,8 +8,9 @@ const ROLES = {
 
 // ── Loan Status ───────────────────────────────────────────────────────────────
 const LOAN_STATUS = {
-  PENDING:     "pending",      // Collateral locked, awaiting INR disbursement
-  ACTIVE:      "active",       // INR disbursed, loan ongoing
+  PENDING:              "pending",               // Legacy / reserved
+  AWAITING_COLLATERAL:  "awaiting_collateral",    // Draft: lock collateral on-chain next
+  ACTIVE:               "active",                // INR disbursed, loan ongoing
   REPAID:      "repaid",       // Fully repaid, crypto returned
   DEFAULTED:   "defaulted",    // Grace period passed, liquidated
   LIQUIDATED:  "liquidated",   // Collateral sold, lender paid

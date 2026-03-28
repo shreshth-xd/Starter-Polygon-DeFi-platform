@@ -9,6 +9,9 @@ import CreditScore from './components/Hero/CreditScore';
 import Footer from './components/Hero/Footer';
 import Login from './components/auth/Login';
 import Signup from './components/auth/Signup';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import LenderDashboard from './components/dashboard/LenderDashboard';
+import BorrowerDashboard from './components/dashboard/BorrowerDashboard';
 
 
 function Home() {
@@ -31,6 +34,24 @@ function App() {
       <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+
+      <Route
+        path="/lender/dashboard"
+        element={
+          <ProtectedRoute role="lender">
+            <LenderDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/borrower/dashboard"
+        element={
+          <ProtectedRoute role="borrower">
+            <BorrowerDashboard />
+          </ProtectedRoute>
+        }
+      />
     </Routes>
   );
 }

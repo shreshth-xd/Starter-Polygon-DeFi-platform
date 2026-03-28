@@ -275,7 +275,12 @@ exports.connectWallet = async (req, res, next) => {
       "borrowerProfile.walletAddress": checksummedLookup,
     });
 
-    return sendOK(res, "Wallet connected successfully.", { walletAddress: checksummedLookup });
+    const updated = await Borrower.findById(req.user._id).select("-password");
+
+    return sendOK(res, "Wallet connected successfully.", {
+      walletAddress: checksummedLookup,
+      user: updated.publicProfile,
+    });
   } catch (err) {
     next(err);
   }
@@ -301,9 +306,12 @@ exports.submitKYC = async (req, res, next) => {
     user.kyc.verifiedAt = new Date();
     await user.save();
 
+    const fresh = await Model.findById(req.user._id).select("-password");
+
     return sendOK(res, "KYC submitted and verified successfully.", {
       isVerified: true,
       verifiedAt: user.kyc.verifiedAt,
+      user: fresh.publicProfile,
     });
   } catch (err) {
     next(err);

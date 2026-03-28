@@ -1,8 +1,10 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 
 const Navbar = () => {
+  const { isLoggedIn, user, logout } = useAuth();
   return (
     <nav className="fixed top-0 w-full z-50 bg-[#05080a]/80 backdrop-blur-md border-b border-slate-800/50">
       <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
@@ -28,18 +30,37 @@ const Navbar = () => {
 
         {/* 3. Action Buttons (Right) */}
         <div className="flex items-center gap-4">
-          <Link
-            to="/login"
-            className="px-5 py-2 text-sm cursor-pointer font-medium text-slate-300 hover:text-white border border-slate-700 rounded-full transition-all hover:bg-slate-800"
-          >
-            Log In
-          </Link>
-          <Link
-            to="/signup"
-            className="px-5 py-2 text-sm cursor-pointer font-bold text-black bg-amber-500 rounded-full hover:bg-amber-400 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)]"
-          >
-            Get Started
-          </Link>
+          {isLoggedIn ? (
+            <>
+              <Link
+                to={user?.role === "lender" ? "/lender/dashboard" : "/borrower/dashboard"}
+                className="px-5 py-2 text-sm cursor-pointer font-medium text-slate-300 hover:text-white border border-slate-700 rounded-full transition-all hover:bg-slate-800"
+              >
+                My Dashboard
+              </Link>
+              <button
+                onClick={logout}
+                className="px-5 py-2 text-sm cursor-pointer font-bold text-black bg-amber-500 rounded-full hover:bg-amber-400 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+              >
+                Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <Link
+                to="/login"
+                className="px-5 py-2 text-sm cursor-pointer font-medium text-slate-300 hover:text-white border border-slate-700 rounded-full transition-all hover:bg-slate-800"
+              >
+                Log In
+              </Link>
+              <Link
+                to="/signup"
+                className="px-5 py-2 text-sm cursor-pointer font-bold text-black bg-amber-500 rounded-full hover:bg-amber-400 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+              >
+                Get Started
+              </Link>
+            </>
+          )}
         </div>
 
       </div>

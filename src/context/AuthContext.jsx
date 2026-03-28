@@ -64,12 +64,38 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  /** Link MetaMask address to the logged-in borrower (for email/password accounts). */
+  const connectBorrowerWallet = async (walletAddress) => {
+    const res = await authAPI.connectWallet(walletAddress);
+    const updatedUser = res.data.data.user;
+    if (updatedUser) {
+      setUser(updatedUser);
+      localStorage.setItem("credaura_user", JSON.stringify(updatedUser));
+    }
+    return res.data.data;
+  };
+
   const isLoggedIn   = !!token && !!user;
   const isLender     = isLoggedIn && user?.role === "lender";
   const isBorrower   = isLoggedIn && user?.role === "borrower";
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, isLoggedIn, isLender, isBorrower, signup, login, loginWithWallet, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        loading,
+        isLoggedIn,
+        isLender,
+        isBorrower,
+        signup,
+        login,
+        loginWithWallet,
+        logout,
+        refreshUser,
+        connectBorrowerWallet,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

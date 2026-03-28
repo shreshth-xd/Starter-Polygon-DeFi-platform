@@ -66,9 +66,10 @@ const LoanSchema = new mongoose.Schema(
 
     // ── Blockchain ───────────────────────────────────────────────────────
     blockchainData: {
-      collateralLockTx:   { type: String, default: null },
-      releaseTx:          { type: String, default: null },
-      liquidationTx:      { type: String, default: null },
+      collateralLockTx:     { type: String, default: null },
+      expectedCollateralWei: { type: String, default: null },
+      releaseTx:            { type: String, default: null },
+      liquidationTx:        { type: String, default: null },
     },
   },
   { timestamps: true }

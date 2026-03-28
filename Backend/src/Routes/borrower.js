@@ -10,11 +10,15 @@ const validate = require("../Middleware/validate");
 // All routes require login + borrower role
 router.use(protect, restrictTo("borrower"));
 
-const applyLoanValidators = [
+const loanDraftValidators = [
   body("amountINR").isFloat({ min: 2000, max: 20000 }).withMessage("Loan must be ₹2,000–₹20,000"),
   body("tenureMonths").isIn([3, 6, 12]).withMessage("Tenure must be 3, 6, or 12 months"),
   body("cryptoType").isIn(["ETH", "BTC", "MATIC"]).withMessage("Crypto must be ETH, BTC, or MATIC"),
-  body("collateralTxHash").notEmpty().withMessage("Collateral transaction hash required"),
+];
+
+const confirmLoanValidators = [
+  body("loanId").trim().notEmpty().withMessage("loanId required"),
+  body("collateralTxHash").trim().notEmpty().withMessage("Collateral transaction hash required"),
 ];
 
 const repayValidators = [
@@ -30,7 +34,9 @@ router.post("/check-eligibility",
   borrowerController.checkEligibility
 );
 router.post("/calculate-loan",                         borrowerController.calculateLoan);
-router.post("/apply-loan", applyLoanValidators, validate, borrowerController.applyLoan);
+router.post("/loan-draft", loanDraftValidators, validate, borrowerController.createLoanDraft);
+router.post("/confirm-loan", confirmLoanValidators, validate, borrowerController.confirmLoan);
+router.delete("/loan-draft/:loanId",                   borrowerController.cancelLoanDraft);
 router.get("/loans",                                   borrowerController.getLoans);
 router.get("/loans/:loanId",                           borrowerController.getLoan);
 router.post("/loans/:loanId/repay", repayValidators, validate, borrowerController.repayLoan);

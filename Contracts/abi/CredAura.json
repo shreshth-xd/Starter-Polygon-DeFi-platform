@@ -5,11 +5,55 @@
     "type": "constructor"
   },
   {
+    "inputs": [],
+    "name": "InvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "Unauthorized",
+    "type": "error"
+  },
+  {
     "anonymous": false,
     "inputs": [
-      { "indexed": true,  "internalType": "address", "name": "borrower",   "type": "address" },
-      { "indexed": false, "internalType": "uint256",  "name": "amount",    "type": "uint256" },
-      { "indexed": false, "internalType": "string",   "name": "loanId",    "type": "string" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "loanId",
+        "type": "string"
+      }
+    ],
+    "name": "CollateralLiquidated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "loanId",
+        "type": "string"
+      }
     ],
     "name": "CollateralLocked",
     "type": "event"
@@ -17,8 +61,24 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true,  "internalType": "address", "name": "borrower",   "type": "address" },
-      { "indexed": false, "internalType": "string",   "name": "loanId",    "type": "string" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "string",
+        "name": "loanId",
+        "type": "string"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
     ],
     "name": "CollateralReleased",
     "type": "event"
@@ -26,36 +86,91 @@
   {
     "anonymous": false,
     "inputs": [
-      { "indexed": true,  "internalType": "address", "name": "borrower",   "type": "address" },
-      { "indexed": false, "internalType": "string",   "name": "loanId",    "type": "string" }
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "indexed": false,
+        "internalType": "uint256",
+        "name": "score",
+        "type": "uint256"
+      }
     ],
-    "name": "CollateralLiquidated",
+    "name": "CreditScoreUpdated",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
     "type": "event"
   },
   {
     "inputs": [
-      { "internalType": "string",  "name": "loanId", "type": "string" }
+      {
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      }
     ],
-    "name": "lockCollateral",
-    "outputs": [],
-    "stateMutability": "payable",
+    "name": "getCreditScore",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address",  "name": "borrower",    "type": "address" },
-      { "internalType": "string",   "name": "loanId",      "type": "string" },
-      { "internalType": "uint256",  "name": "amount",      "type": "uint256" }
+      {
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      }
     ],
-    "name": "releaseCollateral",
-    "outputs": [],
-    "stateMutability": "nonpayable",
+    "name": "getLockedCollateral",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "borrower", "type": "address" },
-      { "internalType": "string",  "name": "loanId",   "type": "string" }
+      {
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "loanId",
+        "type": "string"
+      }
     ],
     "name": "liquidate",
     "outputs": [],
@@ -64,20 +179,86 @@
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "borrower", "type": "address" }
+      {
+        "internalType": "string",
+        "name": "loanId",
+        "type": "string"
+      }
     ],
-    "name": "getLockedCollateral",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
+    "name": "lockCollateral",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
     "stateMutability": "view",
     "type": "function"
   },
   {
     "inputs": [
-      { "internalType": "address", "name": "wallet", "type": "address" }
+      {
+        "internalType": "address",
+        "name": "borrower",
+        "type": "address"
+      },
+      {
+        "internalType": "string",
+        "name": "loanId",
+        "type": "string"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      }
     ],
-    "name": "getCreditScore",
-    "outputs": [{ "internalType": "uint256", "name": "", "type": "uint256" }],
-    "stateMutability": "view",
+    "name": "releaseCollateral",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "wallet",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "score",
+        "type": "uint256"
+      }
+    ],
+    "name": "setCreditScore",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "stateMutability": "payable",
+    "type": "receive"
   }
 ]

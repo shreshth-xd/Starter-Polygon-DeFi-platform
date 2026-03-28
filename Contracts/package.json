@@ -2,7 +2,8 @@
   "name": "credaura-contracts",
   "private": true,
   "scripts": {
-    "compile": "hardhat compile && node scripts/copy-abi.js"
+    "compile": "npx hardhat compile && node scripts/copy-abi.js",
+    "deploy:local": "npx hardhat run scripts/deploy.js --network hardhat"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

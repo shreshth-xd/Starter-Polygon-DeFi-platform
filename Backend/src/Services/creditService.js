@@ -108,10 +108,18 @@ const checkEligibility = async (userId, requestedAmount) => {
     };
   }
 
-  // Check for existing active loan
-  const activeLoan = await Loan.findOne({ borrower: userId, status: LOAN_STATUS.ACTIVE });
-  if (activeLoan) {
-    return { eligible: false, reason: "You already have an active loan. Repay it first." };
+  const blocking = await Loan.findOne({
+    borrower: userId,
+    status: { $in: [LOAN_STATUS.ACTIVE, LOAN_STATUS.AWAITING_COLLATERAL] },
+  });
+  if (blocking) {
+    return {
+      eligible: false,
+      reason:
+        blocking.status === LOAN_STATUS.AWAITING_COLLATERAL
+          ? "Finish or cancel your pending loan application first."
+          : "You already have an active loan. Repay it first.",
+    };
   }
 
   return { eligible: true, score, tier, maxLoan };

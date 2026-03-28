@@ -14,6 +14,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error,    setError]    = useState("");
   const [loading,  setLoading]  = useState(false);
+  const [walletLoading, setWalletLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
