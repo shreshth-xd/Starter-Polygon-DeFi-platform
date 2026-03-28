@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 
 
 const Navbar = () => {
@@ -27,12 +28,18 @@ const Navbar = () => {
 
         {/* 3. Action Buttons (Right) */}
         <div className="flex items-center gap-4">
-          <button className="px-5 py-2 text-sm cursor-pointer font-medium text-slate-300 hover:text-white border border-slate-700 rounded-full transition-all hover:bg-slate-800">
+          <Link
+            to="/login"
+            className="px-5 py-2 text-sm cursor-pointer font-medium text-slate-300 hover:text-white border border-slate-700 rounded-full transition-all hover:bg-slate-800"
+          >
             Log In
-          </button>
-          <button className="px-5 py-2 text-sm cursor-pointer ont-bold text-black bg-amber-500 rounded-full hover:bg-amber-400 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)]">
+          </Link>
+          <Link
+            to="/signup"
+            className="px-5 py-2 text-sm cursor-pointer font-bold text-black bg-amber-500 rounded-full hover:bg-amber-400 transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)]"
+          >
             Get Started
-          </button>
+          </Link>
         </div>
 
       </div>
