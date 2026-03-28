@@ -34,6 +34,17 @@ const kycValidators = [
 // Public
 router.post("/signup",  signupValidators, validate, authController.signup);
 router.post("/login",   loginValidators,  validate, authController.login);
+router.get("/wallet-challenge", authController.walletChallenge);
+router.post(
+  "/wallet-login",
+  [
+    body("walletAddress").notEmpty().withMessage("Wallet address required"),
+    body("message").notEmpty().withMessage("Signed message required"),
+    body("signature").notEmpty().withMessage("Signature required"),
+  ],
+  validate,
+  authController.walletLogin
+);
 
 // Protected
 router.get( "/me",             protect, authController.getMe);

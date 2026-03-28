@@ -1,6 +1,7 @@
 // src/context/AuthContext.jsx — Global Auth State (React Context)
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { authAPI } from "../services/api";
+import { loginWithMetaMask } from "../utils/walletAuth";
 
 const AuthContext = createContext(null);
 
@@ -39,6 +40,12 @@ export const AuthProvider = ({ children }) => {
     return res.data.data;
   };
 
+  const loginWithWallet = async () => {
+    const data = await loginWithMetaMask();
+    saveSession(data.token, data.user);
+    return data;
+  };
+
   const logout = useCallback(() => {
     localStorage.removeItem("credaura_token");
     localStorage.removeItem("credaura_user");
@@ -62,7 +69,7 @@ export const AuthProvider = ({ children }) => {
   const isBorrower   = isLoggedIn && user?.role === "borrower";
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, isLoggedIn, isLender, isBorrower, signup, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, isLoggedIn, isLender, isBorrower, signup, login, loginWithWallet, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

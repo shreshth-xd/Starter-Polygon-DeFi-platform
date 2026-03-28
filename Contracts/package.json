@@ -1,0 +1,11 @@
+{
+  "name": "credaura-contracts",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile && node scripts/copy-abi.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.0"
+  }
+}

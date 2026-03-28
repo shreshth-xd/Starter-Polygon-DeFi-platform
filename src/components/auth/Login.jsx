@@ -5,7 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import "./Auth.css";
 
 export default function Login() {
-  const { login }   = useAuth();
+  const { login, loginWithWallet }   = useAuth();
   const navigate    = useNavigate();
   const location    = useLocation();
   const from        = location.state?.from?.pathname || null;
@@ -32,6 +32,28 @@ export default function Login() {
       setError(err.response?.data?.message || "Login failed. Please check your credentials.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMetaMask = async () => {
+    setWalletLoading(true);
+    setError("");
+    try {
+      const data = await loginWithWallet();
+      if (from) {
+        navigate(from, { replace: true });
+      } else {
+        navigate(data.user.role === "lender" ? "/lender/dashboard" : "/borrower/dashboard");
+      }
+    } catch (err) {
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.errors?.[0]?.message ||
+        err.message ||
+        "Wallet sign-in failed.";
+      setError(msg);
+    } finally {
+      setWalletLoading(false);
     }
   };
 
@@ -109,12 +131,21 @@ export default function Login() {
 
           <div className="auth-divider"><span>or continue with</span></div>
 
+          <p className="auth-wallet-hint">
+            MetaMask sign-in is for <strong>borrowers</strong> who already linked this wallet after registering with email.
+          </p>
+
           <div className="wallet-btns">
-            <button className="wallet-btn" type="button">
-              🦊&nbsp; MetaMask
+            <button
+              className="wallet-btn"
+              type="button"
+              disabled={walletLoading || loading}
+              onClick={handleMetaMask}
+            >
+              {walletLoading ? "Waiting for wallet…" : "🦊 MetaMask"}
             </button>
-            <button className="wallet-btn" type="button">
-              🔗&nbsp; WalletConnect
+            <button className="wallet-btn wallet-btn--muted" type="button" disabled title="Coming soon">
+              🔗 WalletConnect
             </button>
           </div>
 

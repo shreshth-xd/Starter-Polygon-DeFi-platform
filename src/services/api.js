@@ -31,6 +31,9 @@ API.interceptors.response.use(
 export const authAPI = {
   signup:        (data)   => API.post("/auth/signup", data),
   login:         (data)   => API.post("/auth/login", data),
+  walletChallenge: (address) =>
+    API.get("/auth/wallet-challenge", { params: { address } }),
+  walletLogin:   (data)   => API.post("/auth/wallet-login", data),
   getMe:         ()       => API.get("/auth/me"),
   updateProfile: (data)   => API.patch("/auth/update-profile", data),
   submitKYC:     (data)   => API.post("/auth/submit-kyc", data),

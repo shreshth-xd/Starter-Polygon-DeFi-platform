@@ -1,11 +1,30 @@
 // src/controllers/authController.js — Auth: Signup, Login, Profile
+const { ethers } = require("ethers");
 const Lender = require("../Models/Lender");
 const Borrower = require("../Models/Borrower");
 const blockchainService = require("../Services/blockchainService");
 const { emailExistsAnywhere, findAccountByEmailForLogin } = require("../utils/accountLookup");
+const { createNonce, consumeNonceIfValid } = require("../utils/walletAuthNonce");
 const { generateToken } = require("../utils/jwt");
 const { sendOK, sendCreated, sendError } = require("../utils/response");
 const { ROLES, CREDIT } = require("../utils/constants");
+
+async function findBorrowerByWalletAddress(address) {
+  let normalized;
+  try {
+    normalized = ethers.getAddress(address);
+  } catch {
+    return null;
+  }
+  return Borrower.findOne({
+    $expr: {
+      $eq: [
+        { $toLower: { $ifNull: ["$borrowerProfile.walletAddress", ""] } },
+        normalized.toLowerCase(),
+      ],
+    },
+  });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/auth/signup
@@ -96,6 +115,101 @@ exports.login = async (req, res, next) => {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/auth/wallet-challenge?address=0x...
+// Returns a message the user must sign with MetaMask to prove wallet ownership.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.walletChallenge = async (req, res, next) => {
+  try {
+    const raw = req.query.address;
+    if (!raw || !blockchainService.isValidAddress(raw)) {
+      return sendError(res, 400, "Valid wallet address is required.");
+    }
+    const normalized = ethers.getAddress(raw);
+    const nonce = createNonce(normalized);
+    const issuedAt = new Date().toISOString();
+    const message = [
+      "CredAura — Sign in with Ethereum",
+      "",
+      `Wallet: ${normalized}`,
+      `Nonce: ${nonce}`,
+      `Issued At: ${issuedAt}`,
+      "",
+      "Signing this message does not cost gas.",
+    ].join("\n");
+
+    return sendOK(res, "Sign this message in your wallet.", { message, walletAddress: normalized });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/wallet-login
+// Body: { walletAddress, message, signature }
+// Verifies EIP-191 signature and issues JWT for borrowers with this wallet linked.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.walletLogin = async (req, res, next) => {
+  try {
+    const { walletAddress, message, signature } = req.body;
+
+    if (!walletAddress || !message || !signature) {
+      return sendError(res, 400, "walletAddress, message, and signature are required.");
+    }
+
+    if (!blockchainService.isValidAddress(walletAddress)) {
+      return sendError(res, 400, "Invalid wallet address.");
+    }
+
+    let normalized;
+    try {
+      normalized = ethers.getAddress(walletAddress);
+    } catch {
+      return sendError(res, 400, "Invalid wallet address.");
+    }
+
+    let recovered;
+    try {
+      recovered = ethers.verifyMessage(message, signature);
+    } catch {
+      return sendError(res, 401, "Invalid signature.");
+    }
+
+    if (recovered.toLowerCase() !== normalized.toLowerCase()) {
+      return sendError(res, 401, "Signature does not match wallet address.");
+    }
+
+    if (!consumeNonceIfValid(normalized, message)) {
+      return sendError(res, 401, "Invalid or expired sign-in challenge. Request a new message.");
+    }
+
+    const borrower = await findBorrowerByWalletAddress(normalized);
+    if (!borrower) {
+      return sendError(
+        res,
+        404,
+        "No borrower account linked to this wallet. Sign up with email, then link MetaMask from your dashboard."
+      );
+    }
+
+    if (!borrower.isActive) {
+      return sendError(res, 403, "Your account has been deactivated. Contact support.");
+    }
+    if (borrower.isBanned) {
+      return sendError(res, 403, `Your account has been banned. Reason: ${borrower.banReason}`);
+    }
+
+    const token = generateToken({ id: borrower._id, role: "borrower" });
+
+    return sendOK(res, "Signed in with wallet.", {
+      token,
+      user: borrower.publicProfile,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GET /api/auth/me  (protected)
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getMe = async (req, res, next) => {
@@ -143,8 +257,14 @@ exports.connectWallet = async (req, res, next) => {
       return sendError(res, 400, "Invalid wallet address format.");
     }
 
+    const checksummedLookup = ethers.getAddress(walletAddress);
     const existing = await Borrower.findOne({
-      "borrowerProfile.walletAddress": walletAddress,
+      $expr: {
+        $eq: [
+          { $toLower: { $ifNull: ["$borrowerProfile.walletAddress", ""] } },
+          checksummedLookup.toLowerCase(),
+        ],
+      },
       _id: { $ne: req.user._id },
     });
     if (existing) {
@@ -152,10 +272,10 @@ exports.connectWallet = async (req, res, next) => {
     }
 
     await Borrower.findByIdAndUpdate(req.user._id, {
-      "borrowerProfile.walletAddress": walletAddress,
+      "borrowerProfile.walletAddress": checksummedLookup,
     });
 
-    return sendOK(res, "Wallet connected successfully.", { walletAddress });
+    return sendOK(res, "Wallet connected successfully.", { walletAddress: checksummedLookup });
   } catch (err) {
     next(err);
   }

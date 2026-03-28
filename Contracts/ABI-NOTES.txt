@@ -1,0 +1,18 @@
+ABI vs full artifact (what you need when)
+
+1) ABI JSON (array of function/event fragments)
+   — Enough to encode/decode calls and events in ethers.js, MetaMask, or the backend.
+   — You must still know the deployed contract ADDRESS and the CHAIN / NETWORK.
+
+2) Full Hardhat artifact (CredAura.json under artifacts)
+   — Contains ABI + bytecode + metadata.
+   — You need bytecode + ABI to deploy a NEW contract.
+   — After deployment, you only need ABI + address for day-to-day use.
+
+3) Single ABI file
+   — One ABI file per contract is normal. If you add more contracts, you get one ABI per contract
+     (or a combined export), not a single file for everything unless you bundle.
+
+4) This repo
+   — After `npm run compile` in Contracts/, ABI is copied to both `Contracts/abi/` and
+     `Backend/contracts/abi/` so the Node server and frontends can share the same definition.
