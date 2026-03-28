@@ -1,0 +1,6 @@
+[
+  "function releaseCollateral(address borrower, string loanId, uint256 amount) external returns (bool)",
+  "function liquidate(address borrower, string loanId) external returns (bool)",
+  "function getLockedCollateral(address borrower) view returns (uint256)",
+  "function getCreditScore(address wallet) view returns (uint256)"
+]

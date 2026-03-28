@@ -1,5 +1,6 @@
 // src/controllers/borrowerController.js — Borrower Operations
-const User             = require("../Models/User");
+const mongoose          = require("mongoose");
+const Borrower         = require("../Models/Borrower");
 const Loan             = require("../Models/Loan");
 const Transaction      = require("../Models/Transaction");
 const creditService    = require("../Services/creditService");
@@ -7,13 +8,22 @@ const blockchainService = require("../Services/blockchainService");
 const { sendOK, sendCreated, sendError } = require("../utils/response");
 const { LOAN_STATUS, LOAN } = require("../utils/constants");
 
+async function findLoanForBorrower(rawId, borrowerId) {
+  const base = { borrower: borrowerId };
+  if (mongoose.Types.ObjectId.isValid(rawId)) {
+    const byId = await Loan.findOne({ ...base, _id: rawId });
+    if (byId) return byId;
+  }
+  return Loan.findOne({ ...base, loanId: rawId });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/borrower/dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getDashboard = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const user   = await User.findById(userId);
+    const user   = await Borrower.findById(userId);
 
     const [loans, transactions] = await Promise.all([
       Loan.find({ borrower: userId }).sort({ createdAt: -1 }),
@@ -89,7 +99,7 @@ exports.applyLoan = async (req, res, next) => {
   try {
     const { amountINR, tenureMonths, cryptoType, collateralTxHash } = req.body;
     const userId = req.user._id;
-    const user   = await User.findById(userId);
+    const user   = await Borrower.findById(userId);
 
     // KYC check
     if (!user.kyc.isVerified) {
@@ -162,7 +172,7 @@ exports.applyLoan = async (req, res, next) => {
     });
 
     // Update borrower stats
-    await User.findByIdAndUpdate(userId, {
+    await Borrower.findByIdAndUpdate(userId, {
       $inc: {
         "borrowerProfile.totalBorrowed": amountINR,
         "borrowerProfile.activeLoans":   1,
@@ -172,14 +182,21 @@ exports.applyLoan = async (req, res, next) => {
     // Log transactions
     await Transaction.create([
       {
-        user: userId, type: "collateral_lock",
-        cryptoAmount: terms.collateralCrypto, cryptoType,
-        loanId: loan._id, txHash: collateralTxHash,
+        user: userId,
+        userKind: "Borrower",
+        type: "collateral_lock",
+        cryptoAmount: terms.collateralCrypto,
+        cryptoType,
+        loanId: loan._id,
+        txHash: collateralTxHash,
         description: `Collateral locked for loan ${loan.loanId}`,
       },
       {
-        user: userId, type: "loan_disbursed",
-        amountINR, loanId: loan._id,
+        user: userId,
+        userKind: "Borrower",
+        type: "loan_disbursed",
+        amountINR,
+        loanId: loan._id,
         description: `Loan ${loan.loanId} disbursed to bank account`,
       },
     ]);
@@ -214,7 +231,7 @@ exports.getLoans = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getLoan = async (req, res, next) => {
   try {
-    const loan = await Loan.findOne({ loanId: req.params.loanId, borrower: req.user._id });
+    const loan = await findLoanForBorrower(req.params.loanId, req.user._id);
     if (!loan) return sendError(res, 404, "Loan not found.");
     return sendOK(res, "Loan fetched.", { loan });
   } catch (err) {
@@ -229,7 +246,7 @@ exports.getLoan = async (req, res, next) => {
 exports.repayLoan = async (req, res, next) => {
   try {
     const { amountINR, paymentMethod, transactionId } = req.body;
-    const loan = await Loan.findOne({ loanId: req.params.loanId, borrower: req.user._id });
+    const loan = await findLoanForBorrower(req.params.loanId, req.user._id);
 
     if (!loan)                            return sendError(res, 404, "Loan not found.");
     if (loan.status !== LOAN_STATUS.ACTIVE) return sendError(res, 400, "Loan is not active.");
@@ -248,7 +265,7 @@ exports.repayLoan = async (req, res, next) => {
 
     if (allPaid) {
       // Release collateral via smart contract
-      const user = await User.findById(req.user._id);
+      const user = await Borrower.findById(req.user._id);
       const releaseResult = await blockchainService.releaseCollateral(
         user.borrowerProfile.walletAddress,
         loan.loanId,
@@ -263,7 +280,7 @@ exports.repayLoan = async (req, res, next) => {
       await creditService.applyRepayBonus(req.user._id);
 
       // Update borrower stats
-      await User.findByIdAndUpdate(req.user._id, {
+      await Borrower.findByIdAndUpdate(req.user._id, {
         $inc: {
           "borrowerProfile.totalRepaid": loan.totalRepayment,
           "borrowerProfile.activeLoans": -1,
@@ -272,12 +289,14 @@ exports.repayLoan = async (req, res, next) => {
 
       // Log collateral release
       await Transaction.create({
-        user: req.user._id, type: "collateral_release",
+        user: req.user._id,
+        userKind: "Borrower",
+        type: "collateral_release",
         cryptoAmount: loan.collateral.cryptoAmount,
-        cryptoType:   loan.collateral.cryptoType,
-        loanId:       loan._id,
-        txHash:       releaseResult.txHash,
-        description:  `Collateral released — loan ${loan.loanId} fully repaid`,
+        cryptoType: loan.collateral.cryptoType,
+        loanId: loan._id,
+        txHash: releaseResult.txHash,
+        description: `Collateral released — loan ${loan.loanId} fully repaid`,
       });
     }
 
@@ -285,8 +304,11 @@ exports.repayLoan = async (req, res, next) => {
 
     // Log repayment transaction
     await Transaction.create({
-      user: req.user._id, type: "loan_repayment",
-      amountINR, loanId: loan._id,
+      user: req.user._id,
+      userKind: "Borrower",
+      type: "loan_repayment",
+      amountINR,
+      loanId: loan._id,
       description: `EMI ${nextEMI.emiNumber} paid for loan ${loan.loanId}`,
     });
 

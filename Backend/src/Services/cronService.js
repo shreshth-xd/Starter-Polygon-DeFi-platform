@@ -2,7 +2,8 @@
 const cron             = require("node-cron");
 const Loan             = require("../Models/Loan");
 const Deposit          = require("../Models/Deposit");
-const User             = require("../Models/User");
+const Lender = require("../Models/Lender");
+const Borrower = require("../Models/Borrower");
 const Transaction      = require("../Models/Transaction");
 const { applyDefaultPenalty } = require("./creditService");
 const { liquidateCollateral } = require("./blockchainService");
@@ -15,8 +16,8 @@ const checkOverdueLoans = async () => {
     const graceDeadline = new Date();
     graceDeadline.setHours(graceDeadline.getHours() - 24); // 24hr grace
 
-    const overdueLoans = await Loan.findOne({
-      status:  LOAN_STATUS.ACTIVE,
+    const overdueLoans = await Loan.find({
+      status: LOAN_STATUS.ACTIVE,
       dueDate: { $lt: graceDeadline },
     }).populate("borrower");
 
@@ -33,8 +34,8 @@ const checkOverdueLoans = async () => {
         loan.status = LOAN_STATUS.LIQUIDATED;
         loan.closedDate = new Date();
         loan.liquidation = {
-          liquidatedAt:   new Date(),
-          txHash:         result.txHash,
+          liquidatedAt: new Date(),
+          txHash: result.txHash,
           amountReceived: loan.collateral.inrValueAtLock,
         };
         await loan.save();
@@ -43,18 +44,19 @@ const checkOverdueLoans = async () => {
         await applyDefaultPenalty(loan.borrower._id);
 
         // Update borrower stats
-        await User.findByIdAndUpdate(loan.borrower._id, {
+        await Borrower.findByIdAndUpdate(loan.borrower._id, {
           $inc: { "borrowerProfile.activeLoans": -1 },
         });
 
         // Log transaction
         await Transaction.create({
-          user:        loan.borrower._id,
-          type:        "liquidation",
+          user: loan.borrower._id,
+          userKind: "Borrower",
+          type: "liquidation",
           cryptoAmount: loan.collateral.cryptoAmount,
-          cryptoType:  loan.collateral.cryptoType,
-          loanId:      loan._id,
-          txHash:      result.txHash,
+          cryptoType: loan.collateral.cryptoType,
+          loanId: loan._id,
+          txHash: result.txHash,
           description: `Collateral liquidated for loan ${loan.loanId}`,
         });
 
@@ -93,14 +95,15 @@ const creditMonthlyInterest = async () => {
       await deposit.save();
 
       // Update lender's total earned
-      await User.findByIdAndUpdate(deposit.lender, {
+      await Lender.findByIdAndUpdate(deposit.lender, {
         $inc: { "lenderProfile.totalEarned": monthlyInterest },
       });
 
       // Log transaction
       await Transaction.create({
-        user:      deposit.lender,
-        type:      "interest_credit",
+        user: deposit.lender,
+        userKind: "Lender",
+        type: "interest_credit",
         amountINR: monthlyInterest,
         depositId: deposit._id,
         description: `Monthly interest for deposit ${deposit.depositId}`,

@@ -20,7 +20,7 @@ const LoanSchema = new mongoose.Schema(
     },
     borrower: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Borrower",
       required: true,
     },
 

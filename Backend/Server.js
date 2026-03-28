@@ -7,15 +7,15 @@ const morgan        = require("morgan");
 const rateLimit     = require("express-rate-limit");
 
 const connectDB     = require("./src/config/db");
-const errorHandler  = require("./src/middleware/errorHandler");
-const cronService   = require("./src/services/cronService");
+const errorHandler  = require("./src/Middleware/errorHandler");
+const cronService   = require("./src/Services/cronService");
 
-// Routes 
-const authRoutes     = require("./src/routes/auth");
-const lenderRoutes   = require("./src/routes/lender");
-const borrowerRoutes = require("./src/routes/borrower");
-const loanRoutes     = require("./src/routes/loan");
-const creditRoutes   = require("./src/routes/credit");
+// Routes
+const authRoutes     = require("./src/Routes/auth");
+const lenderRoutes   = require("./src/Routes/lender");
+const borrowerRoutes = require("./src/Routes/borrower");
+const loanRoutes     = require("./src/Routes/loan");
+const creditRoutes   = require("./src/Routes/credit");
 
 // Connect Database
 connectDB();
@@ -25,8 +25,11 @@ const app = express();
 // Security Middleware
 app.use(helmet());
 
+const defaultOrigins = ["http://localhost:5173", "http://localhost:3000"];
 app.use(cors({
-  origin: process.env.CLIENT_URL || "http://localhost:3000",
+  origin: process.env.CLIENT_URL
+    ? process.env.CLIENT_URL.split(",").map((s) => s.trim())
+    : defaultOrigins,
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"],

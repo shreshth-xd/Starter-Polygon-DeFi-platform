@@ -8,7 +8,7 @@ const DepositSchema = new mongoose.Schema(
 
     lender: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Lender",
       required: true,
     },
 

@@ -3,7 +3,16 @@ const mongoose = require("mongoose");
 
 const TransactionSchema = new mongoose.Schema(
   {
-    user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      refPath: "userKind",
+    },
+    userKind: {
+      type: String,
+      enum: ["Lender", "Borrower"],
+      required: true,
+    },
 
     type: {
       type: String,
@@ -15,7 +24,7 @@ const TransactionSchema = new mongoose.Schema(
         "loan_repayment",   // Borrower repays EMI
         "collateral_lock",  // Borrower locks crypto
         "collateral_release", // Crypto returned to borrower
-        "liquidation",      // Collateral liquidated on default
+        "liquidation",      // Collateral liquidated on default (cron / admin)
       ],
       required: true,
     },

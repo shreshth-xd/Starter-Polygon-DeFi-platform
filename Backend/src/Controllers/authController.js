@@ -1,6 +1,8 @@
 // src/controllers/authController.js — Auth: Signup, Login, Profile
-const User          = require("../Models/User");
-const Transaction   = require("../Models/Transaction");
+const Lender = require("../Models/Lender");
+const Borrower = require("../Models/Borrower");
+const blockchainService = require("../Services/blockchainService");
+const { emailExistsAnywhere, findAccountByEmailForLogin } = require("../utils/accountLookup");
 const { generateToken } = require("../utils/jwt");
 const { sendOK, sendCreated, sendError } = require("../utils/response");
 const { ROLES, CREDIT } = require("../utils/constants");
@@ -13,33 +15,44 @@ exports.signup = async (req, res, next) => {
   try {
     const { fullName, email, phone, password, role, upiId, bankAccountNumber } = req.body;
 
-    // Check duplicate email
-    const existing = await User.findOne({ email: email.toLowerCase() });
-    if (existing) {
+    if (await emailExistsAnywhere(email)) {
       return sendError(res, 409, "An account with this email already exists.");
     }
 
-    // Build user object
-    const userData = { fullName, email, phone, password, role };
-
     if (role === ROLES.LENDER) {
-      userData.lenderProfile = { upiId: upiId || null };
+      const lender = await Lender.create({
+        fullName,
+        email,
+        phone,
+        password,
+        lenderProfile: { upiId: upiId || null },
+      });
+      const token = generateToken({ id: lender._id, role: "lender" });
+      return sendCreated(res, "Account created successfully! Welcome to CredAura.", {
+        token,
+        user: lender.publicProfile,
+      });
     }
 
     if (role === ROLES.BORROWER) {
-      userData.borrowerProfile = {
-        bankAccountNumber: bankAccountNumber || null,
-        creditScore: CREDIT.STARTING_SCORE,
-      };
+      const borrower = await Borrower.create({
+        fullName,
+        email,
+        phone,
+        password,
+        borrowerProfile: {
+          bankAccountNumber: bankAccountNumber || null,
+          creditScore: CREDIT.STARTING_SCORE,
+        },
+      });
+      const token = generateToken({ id: borrower._id, role: "borrower" });
+      return sendCreated(res, "Account created successfully! Welcome to CredAura.", {
+        token,
+        user: borrower.publicProfile,
+      });
     }
 
-    const user  = await User.create(userData);
-    const token = generateToken({ id: user._id, role: user.role });
-
-    return sendCreated(res, "Account created successfully! Welcome to CredAura.", {
-      token,
-      user: user.publicProfile,
-    });
+    return sendError(res, 400, "Invalid role.");
   } catch (err) {
     next(err);
   }
@@ -53,32 +66,29 @@ exports.login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // Get user with password
-    const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
-
-    if (!user) {
+    const found = await findAccountByEmailForLogin(email);
+    if (!found) {
       return sendError(res, 401, "Invalid email or password.");
     }
 
-    // Check password
-    const isMatch = await user.comparePassword(password);
+    const { account, role } = found;
+    const isMatch = await account.comparePassword(password);
     if (!isMatch) {
       return sendError(res, 401, "Invalid email or password.");
     }
 
-    // Check if active / banned
-    if (!user.isActive) {
+    if (!account.isActive) {
       return sendError(res, 403, "Your account has been deactivated. Contact support.");
     }
-    if (user.isBanned) {
-      return sendError(res, 403, `Your account has been banned. Reason: ${user.banReason}`);
+    if (account.isBanned) {
+      return sendError(res, 403, `Your account has been banned. Reason: ${account.banReason}`);
     }
 
-    const token = generateToken({ id: user._id, role: user.role });
+    const token = generateToken({ id: account._id, role });
 
     return sendOK(res, "Login successful. Welcome back!", {
       token,
-      user: user.publicProfile,
+      user: account.publicProfile,
     });
   } catch (err) {
     next(err);
@@ -90,8 +100,7 @@ exports.login = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
-    return sendOK(res, "Profile fetched.", { user: user.publicProfile });
+    return sendOK(res, "Profile fetched.", { user: req.user.publicProfile });
   } catch (err) {
     next(err);
   }
@@ -103,10 +112,10 @@ exports.getMe = async (req, res, next) => {
 exports.updateProfile = async (req, res, next) => {
   try {
     const { fullName, phone, upiId, bankAccountNumber } = req.body;
-    const user = await User.findById(req.user._id);
+    const user = req.user;
 
     if (fullName) user.fullName = fullName;
-    if (phone)    user.phone    = phone;
+    if (phone) user.phone = phone;
 
     if (user.role === ROLES.LENDER && upiId) {
       user.lenderProfile.upiId = upiId;
@@ -129,14 +138,12 @@ exports.updateProfile = async (req, res, next) => {
 exports.connectWallet = async (req, res, next) => {
   try {
     const { walletAddress } = req.body;
-    const { isValidAddress } = require("../Services/blockchainService");
 
-    if (!isValidAddress(walletAddress)) {
+    if (!blockchainService.isValidAddress(walletAddress)) {
       return sendError(res, 400, "Invalid wallet address format.");
     }
 
-    // Check if wallet already used by another user
-    const existing = await User.findOne({
+    const existing = await Borrower.findOne({
       "borrowerProfile.walletAddress": walletAddress,
       _id: { $ne: req.user._id },
     });
@@ -144,7 +151,7 @@ exports.connectWallet = async (req, res, next) => {
       return sendError(res, 409, "This wallet is already linked to another account.");
     }
 
-    await User.findByIdAndUpdate(req.user._id, {
+    await Borrower.findByIdAndUpdate(req.user._id, {
       "borrowerProfile.walletAddress": walletAddress,
     });
 
@@ -161,17 +168,17 @@ exports.connectWallet = async (req, res, next) => {
 exports.submitKYC = async (req, res, next) => {
   try {
     const { aadhaarNumber, panNumber } = req.body;
-    const user = await User.findById(req.user._id).select("+kyc.aadhaarNumber +kyc.panNumber");
+    const Model = req.user.role === ROLES.LENDER ? Lender : Borrower;
+    const user = await Model.findById(req.user._id).select("+kyc.aadhaarNumber +kyc.panNumber");
 
     if (user.kyc.isVerified) {
       return sendError(res, 400, "KYC already verified.");
     }
 
-    // In production: call Aadhaar/PAN verification API here
     user.kyc.aadhaarNumber = aadhaarNumber;
-    user.kyc.panNumber     = panNumber;
-    user.kyc.isVerified    = true;    // Auto-verify for hackathon
-    user.kyc.verifiedAt    = new Date();
+    user.kyc.panNumber = panNumber;
+    user.kyc.isVerified = true;
+    user.kyc.verifiedAt = new Date();
     await user.save();
 
     return sendOK(res, "KYC submitted and verified successfully.", {

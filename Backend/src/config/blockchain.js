@@ -1,67 +1,81 @@
-// src/config/blockchain.js — ethers.js provider + signer for Polygon
+// src/config/blockchain.js — ethers.js provider + optional contract (Polygon)
 const { ethers } = require("ethers");
-const CredAuraABI = require("../../contracts/abi/CredAura.json");
+const fs = require("fs");
+const path = require("path");
 
 let provider = null;
-let signer   = null;
+let signer = null;
 let contract = null;
+let readContract = null;
+let abiCache;
+
+function loadAbi() {
+  if (abiCache !== undefined) return abiCache;
+  const abiPath = path.join(__dirname, "../../contracts/abi/CredAura.json");
+  try {
+    if (fs.existsSync(abiPath)) {
+      abiCache = require(abiPath);
+    } else {
+      abiCache = [];
+    }
+  } catch {
+    abiCache = [];
+  }
+  return abiCache;
+}
 
 /**
- * Initialize provider, signer and contract instance.
- * Call once at startup or lazily on first use.
+ * JSON-RPC provider only (tx receipts, reads). No ABI required.
  */
-const initBlockchain = () => {
-  try {
-    // JSON-RPC provider for Polygon Mumbai (or mainnet)
-    provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
-
-    // Backend wallet (signs transactions on behalf of users for collateral ops)
-    signer = new ethers.Wallet(process.env.BACKEND_WALLET_PRIVATE_KEY, provider);
-
-    // Smart contract instance (with signer so it can send txns)
-    contract = new ethers.Contract(
-      process.env.CONTRACT_ADDRESS,
-      CredAuraABI,
-      signer
-    );
-
-    console.log("⛓️  Blockchain connection initialized — Polygon Network");
-    console.log(`📄  Contract: ${process.env.CONTRACT_ADDRESS}`);
-    return { provider, signer, contract };
-  } catch (err) {
-    console.error("❌ Blockchain init failed:", err.message);
-    throw err;
-  }
-};
-
-// Read-only provider (no private key needed — for read calls)
 const getReadProvider = () => {
-  if (!provider) initBlockchain();
+  if (!process.env.POLYGON_RPC_URL) return null;
+  if (!provider) {
+    provider = new ethers.JsonRpcProvider(process.env.POLYGON_RPC_URL);
+  }
   return provider;
 };
 
-// Write signer (used for backend-initiated txns)
 const getSigner = () => {
-  if (!signer) initBlockchain();
+  if (!process.env.POLYGON_RPC_URL || !process.env.BACKEND_WALLET_PRIVATE_KEY) return null;
+  if (!signer) {
+    const p = getReadProvider();
+    if (!p) return null;
+    signer = new ethers.Wallet(process.env.BACKEND_WALLET_PRIVATE_KEY, p);
+  }
   return signer;
 };
 
-// Contract instance with signer
+/**
+ * Writable contract — only when ABI + address + signer exist.
+ */
 const getContract = () => {
-  if (!contract) initBlockchain();
+  const abi = loadAbi();
+  if (!abi.length || !process.env.CONTRACT_ADDRESS) return null;
+  if (!contract) {
+    const s = getSigner();
+    if (!s) return null;
+    contract = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, s);
+  }
   return contract;
 };
 
-// Read-only contract (no gas, just reads)
+/**
+ * Read-only contract (same ABI + address, provider only).
+ */
 const getReadContract = () => {
+  const abi = loadAbi();
   const p = getReadProvider();
-  return new ethers.Contract(process.env.CONTRACT_ADDRESS, CredAuraABI, p);
+  if (!abi.length || !process.env.CONTRACT_ADDRESS || !p) return null;
+  if (!readContract) {
+    readContract = new ethers.Contract(process.env.CONTRACT_ADDRESS, abi, p);
+  }
+  return readContract;
 };
 
 module.exports = {
-  initBlockchain,
   getReadProvider,
   getSigner,
   getContract,
   getReadContract,
+  loadAbi,
 };

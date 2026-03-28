@@ -1,9 +1,19 @@
 // src/controllers/lenderController.js — Lender Operations
-const User        = require("../Models/User");
+const mongoose    = require("mongoose");
+const Lender      = require("../Models/Lender");
 const Deposit     = require("../Models/Deposit");
 const Transaction = require("../Models/Transaction");
 const { sendOK, sendCreated, sendError } = require("../utils/response");
 const { DEPOSIT_STATUS, DEPOSIT } = require("../utils/constants");
+
+async function findDepositForLender(rawId, lenderId) {
+  const base = { lender: lenderId };
+  if (mongoose.Types.ObjectId.isValid(rawId)) {
+    const byId = await Deposit.findOne({ ...base, _id: rawId });
+    if (byId) return byId;
+  }
+  return Deposit.findOne({ ...base, depositId: rawId });
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/lender/dashboard
@@ -77,14 +87,15 @@ exports.createDeposit = async (req, res, next) => {
     });
 
     // Update lender stats
-    await User.findByIdAndUpdate(req.user._id, {
+    await Lender.findByIdAndUpdate(req.user._id, {
       $inc: { "lenderProfile.totalDeposited": amountINR },
     });
 
     // Log transaction
     await Transaction.create({
-      user:      req.user._id,
-      type:      "deposit",
+      user: req.user._id,
+      userKind: "Lender",
+      type: "deposit",
       amountINR,
       depositId: deposit._id,
       description: `Deposit created — ${tenureMonths}M plan at ${rate * 100}% p.a.`,
@@ -116,10 +127,7 @@ exports.getDeposits = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.getDeposit = async (req, res, next) => {
   try {
-    const deposit = await Deposit.findOne({
-      depositId: req.params.depositId,
-      lender:    req.user._id,
-    });
+    const deposit = await findDepositForLender(req.params.depositId, req.user._id);
     if (!deposit) return sendError(res, 404, "Deposit not found.");
     return sendOK(res, "Deposit fetched.", { deposit });
   } catch (err) {
@@ -132,10 +140,7 @@ exports.getDeposit = async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.withdrawDeposit = async (req, res, next) => {
   try {
-    const deposit = await Deposit.findOne({
-      depositId: req.params.depositId,
-      lender:    req.user._id,
-    });
+    const deposit = await findDepositForLender(req.params.depositId, req.user._id);
 
     if (!deposit) return sendError(res, 404, "Deposit not found.");
     if (deposit.status !== DEPOSIT_STATUS.MATURED) {
@@ -147,8 +152,9 @@ exports.withdrawDeposit = async (req, res, next) => {
     await deposit.save();
 
     await Transaction.create({
-      user:      req.user._id,
-      type:      "withdrawal",
+      user: req.user._id,
+      userKind: "Lender",
+      type: "withdrawal",
       amountINR: deposit.maturityValue,
       depositId: deposit._id,
       description: `Maturity withdrawal — ${deposit.depositId}`,

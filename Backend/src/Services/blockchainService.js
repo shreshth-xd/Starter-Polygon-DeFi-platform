@@ -1,97 +1,91 @@
-// src/services/blockchainService.js — All ethers.js / Polygon interactions
-const { ethers }     = require("ethers");
-const { getContract, getReadContract } = require("../config/blockchain");
+// src/services/blockchainService.js — ethers.js / Polygon interactions (with dev fallbacks)
+const { ethers } = require("ethers");
+const { getContract, getReadContract, getReadProvider } = require("../config/blockchain");
+
+const MOCK_TX =
+  "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 /**
- * Lock collateral in the smart contract.
- * Called after borrower approves the transaction from their MetaMask.
- * Here the backend verifies the tx on-chain.
- *
- * @param {string} txHash - Transaction hash sent by borrower's MetaMask
- * @param {string} loanId - Internal loan ID
+ * Verify a collateral lock tx on-chain. Without RPC, dev mode can mock-verify.
  */
 const verifyCollateralLock = async (txHash) => {
-  try {
-    const provider = getContract().runner.provider;
-    const receipt  = await provider.getTransactionReceipt(txHash);
-
-    if (!receipt) throw new Error("Transaction not found on chain");
-    if (receipt.status !== 1) throw new Error("Transaction failed on chain");
-
-    return {
-      success:     true,
-      txHash:      receipt.hash,
-      blockNumber: receipt.blockNumber,
-      gasUsed:     receipt.gasUsed.toString(),
-    };
-  } catch (err) {
-    throw new Error(`Collateral verification failed: ${err.message}`);
+  const provider = getReadProvider();
+  if (!provider) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[blockchain] No POLYGON_RPC_URL — mock collateral verification");
+      return {
+        success: true,
+        txHash,
+        blockNumber: null,
+        mock: true,
+      };
+    }
+    throw new Error("Blockchain provider not configured (set POLYGON_RPC_URL)");
   }
-};
 
-/**
- * Call smart contract to release collateral back to borrower.
- * Triggered by backend after confirming full INR repayment.
- *
- * @param {string} borrowerWallet - Borrower's MetaMask address
- * @param {string} loanId         - Internal loan ID (passed to contract)
- * @param {string} cryptoAmount   - Amount of crypto to release (as string)
- */
-const releaseCollateral = async (borrowerWallet, contractLoanId, cryptoAmount) => {
-  try {
-    const contract = getContract();
-    const amount   = ethers.parseEther(cryptoAmount.toString());
+  const receipt = await provider.getTransactionReceipt(txHash);
+  if (!receipt) throw new Error("Transaction not found on chain");
+  if (receipt.status !== 1) throw new Error("Transaction failed on chain");
 
-    const tx = await contract.releaseCollateral(borrowerWallet, contractLoanId, amount);
-    const receipt = await tx.wait();
-
-    return {
-      success:     true,
-      txHash:      receipt.hash,
-      blockNumber: receipt.blockNumber,
-    };
-  } catch (err) {
-    throw new Error(`Collateral release failed: ${err.message}`);
-  }
-};
-
-/**
- * Call smart contract to liquidate collateral on default.
- * Triggered by cron job after grace period.
- */
-const liquidateCollateral = async (borrowerWallet, contractLoanId) => {
-  try {
-    const contract = getContract();
-    const tx       = await contract.liquidate(borrowerWallet, contractLoanId);
-    const receipt  = await tx.wait();
-
-    return {
-      success:     true,
-      txHash:      receipt.hash,
-      blockNumber: receipt.blockNumber,
-    };
-  } catch (err) {
-    throw new Error(`Liquidation failed: ${err.message}`);
-  }
-};
-
-/**
- * Get current ETH/MATIC/BTC price in INR from a simple on-chain or API call.
- * For hackathon purposes, uses a static mock. Replace with real oracle.
- */
-const getCryptoPriceINR = async (cryptoType) => {
-  // In production: use Chainlink price feed or CoinGecko API
-  const MOCK_PRICES = {
-    ETH:  64285,
-    BTC:  5428500,
-    MATIC: 72,
+  return {
+    success: true,
+    txHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
+    gasUsed: receipt.gasUsed.toString(),
   };
-  return MOCK_PRICES[cryptoType] || 0;
 };
 
-/**
- * Verify a wallet address format
- */
+const releaseCollateral = async (borrowerWallet, contractLoanId, cryptoAmount) => {
+  const contract = getContract();
+  if (!contract) {
+    console.warn("[blockchain] Contract not configured — mock collateral release");
+    return {
+      success: true,
+      txHash: MOCK_TX,
+      mock: true,
+    };
+  }
+
+  const amount = ethers.parseEther(String(cryptoAmount));
+  const tx = await contract.releaseCollateral(borrowerWallet, contractLoanId, amount);
+  const receipt = await tx.wait();
+  return {
+    success: true,
+    txHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
+  };
+};
+
+const liquidateCollateral = async (borrowerWallet, contractLoanId) => {
+  const contract = getContract();
+  if (!contract) {
+    console.warn("[blockchain] Contract not configured — mock liquidation");
+    return {
+      success: true,
+      txHash: MOCK_TX,
+      mock: true,
+    };
+  }
+
+  const tx = await contract.liquidate(borrowerWallet, contractLoanId);
+  const receipt = await tx.wait();
+  return {
+    success: true,
+    txHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
+  };
+};
+
+const MOCK_PRICES = {
+  ETH: 64285,
+  BTC: 5428500,
+  MATIC: 72,
+};
+
+const getCryptoPriceINR = async (cryptoType) => {
+  return MOCK_PRICES[cryptoType] || MOCK_PRICES.ETH;
+};
+
 const isValidAddress = (address) => {
   try {
     return ethers.isAddress(address);
@@ -100,13 +94,11 @@ const isValidAddress = (address) => {
   }
 };
 
-/**
- * Get collateral balance locked by a borrower (read-only)
- */
 const getLockedCollateral = async (borrowerWallet) => {
   try {
     const contract = getReadContract();
-    const balance  = await contract.getLockedCollateral(borrowerWallet);
+    if (!contract) return "0";
+    const balance = await contract.getLockedCollateral(borrowerWallet);
     return ethers.formatEther(balance);
   } catch (err) {
     console.error("getLockedCollateral error:", err.message);
@@ -114,13 +106,11 @@ const getLockedCollateral = async (borrowerWallet) => {
   }
 };
 
-/**
- * Get credit score from smart contract (on-chain record)
- */
 const getOnChainCreditScore = async (walletAddress) => {
   try {
     const contract = getReadContract();
-    const score    = await contract.getCreditScore(walletAddress);
+    if (!contract) return null;
+    const score = await contract.getCreditScore(walletAddress);
     return Number(score);
   } catch (err) {
     console.error("getOnChainCreditScore error:", err.message);

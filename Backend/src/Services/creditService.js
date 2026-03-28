@@ -1,17 +1,15 @@
 // src/services/creditService.js — Credit Score Logic (Node.js, no Python)
-const User         = require("../Models/User");
+const Borrower = require("../Models/Borrower");
 const Loan         = require("../Models/Loan");
-const { CREDIT, SCORE_TIERS, LOAN } = require("../utils/constants");
+const { CREDIT, SCORE_TIERS, LOAN, LOAN_STATUS } = require("../utils/constants");
 
 /**
  * Calculate credit score for a borrower.
  * Reads on-chain wallet history and past loan records from MongoDB.
  */
 const calculateScore = async (userId) => {
-  const user = await User.findById(userId);
-  if (!user || user.role !== "borrower") {
-    throw new Error("Borrower not found");
-  }
+  const user = await Borrower.findById(userId);
+  if (!user) throw new Error("Borrower not found");
   return user.borrowerProfile.creditScore;
 };
 
@@ -19,8 +17,8 @@ const calculateScore = async (userId) => {
  * Apply on-time repayment bonus (+100)
  */
 const applyRepayBonus = async (userId) => {
-  const user = await User.findById(userId);
-  if (!user || user.role !== "borrower") return;
+  const user = await Borrower.findById(userId);
+  if (!user) return;
 
   let newScore = Math.min(
     user.borrowerProfile.creditScore + CREDIT.REPAY_BONUS,
@@ -38,8 +36,8 @@ const applyRepayBonus = async (userId) => {
  * Apply default penalty (-150), check for ban
  */
 const applyDefaultPenalty = async (userId) => {
-  const user = await User.findById(userId);
-  if (!user || user.role !== "borrower") return;
+  const user = await Borrower.findById(userId);
+  if (!user) return;
 
   let newScore = user.borrowerProfile.creditScore - CREDIT.DEFAULT_PENALTY;
 
@@ -79,8 +77,8 @@ const getMaxLoanAmount = (score) => {
  * Validate if a borrower is eligible for a loan of given amount
  */
 const checkEligibility = async (userId, requestedAmount) => {
-  const user = await User.findById(userId);
-  if (!user) throw new Error("User not found");
+  const user = await Borrower.findById(userId);
+  if (!user) throw new Error("Borrower not found");
 
   if (user.isBanned) {
     return { eligible: false, reason: "Account is permanently banned" };
@@ -111,7 +109,7 @@ const checkEligibility = async (userId, requestedAmount) => {
   }
 
   // Check for existing active loan
-  const activeLoan = await Loan.findOne({ borrower: userId, status: "active" });
+  const activeLoan = await Loan.findOne({ borrower: userId, status: LOAN_STATUS.ACTIVE });
   if (activeLoan) {
     return { eligible: false, reason: "You already have an active loan. Repay it first." };
   }

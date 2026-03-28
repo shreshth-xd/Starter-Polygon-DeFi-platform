@@ -1,18 +1,16 @@
 // src/middleware/auth.js — JWT Authentication + Role Guard
 const { verifyToken } = require("../utils/jwt");
-const { sendError }   = require("../utils/response");
-const User            = require("../Models/User");
+const { sendError } = require("../utils/response");
+const Lender = require("../Models/Lender");
+const Borrower = require("../Models/Borrower");
 
 /**
- * protect — verifies JWT, attaches req.user
+ * protect — verifies JWT, loads Lender or Borrower by payload.role + id, attaches req.user
  */
 const protect = async (req, res, next) => {
   let token;
 
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith("Bearer ")
-  ) {
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
     token = req.headers.authorization.split(" ")[1];
   }
 
@@ -22,21 +20,30 @@ const protect = async (req, res, next) => {
 
   try {
     const decoded = verifyToken(token);
+    const { id, role } = decoded;
 
-    const user = await User.findById(decoded.id).select("-password");
-    if (!user) {
+    let account;
+    if (role === "lender") {
+      account = await Lender.findById(id).select("-password");
+    } else if (role === "borrower") {
+      account = await Borrower.findById(id).select("-password");
+    } else {
+      return sendError(res, 401, "Invalid token payload.");
+    }
+
+    if (!account) {
       return sendError(res, 401, "User belonging to this token no longer exists.");
     }
 
-    if (!user.isActive) {
+    if (!account.isActive) {
       return sendError(res, 403, "Your account has been deactivated.");
     }
 
-    if (user.isBanned) {
-      return sendError(res, 403, `Account banned: ${user.banReason || "Violation of terms"}`);
+    if (account.isBanned) {
+      return sendError(res, 403, `Account banned: ${account.banReason || "Violation of terms"}`);
     }
 
-    req.user = user;
+    req.user = account;
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
@@ -48,13 +55,13 @@ const protect = async (req, res, next) => {
 
 /**
  * restrictTo(...roles) — role-based access guard
- * Usage: router.get("/route", protect, restrictTo("lender"))
  */
 const restrictTo = (...roles) => {
   return (req, res, next) => {
     if (!roles.includes(req.user.role)) {
       return sendError(
-        res, 403,
+        res,
+        403,
         `Access denied. This route is restricted to: ${roles.join(", ")}.`
       );
     }
